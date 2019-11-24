@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+//Params
+var canvasHeight = 375;
+var canvasWidth = 15000;
+var magic = 15000; //Interpolate array to this size
+var windScale = 10;
+var tempScale = 10;
+var mphX = 25; //MPH on canvas distance from right edge pixels
+var mphY = 10; //MPH on canvas distance from top pixels
+var depthHours = 72.0;
+var minPixVertBars = 40;
+var tempPad = 100;
+
+
+
+//Globals
+var sortedWind =[1,2];
+var sortedTemp =[1,2];
+var unscaledTemp = [];
+var ctx;
+var c;
+var slider;
+var info
+var wind_temp_sw = 0
+
+//Functions
+
+function stats()
+{
+  var ff = new Date();
+  var peakMPH = sortedWind.reduce(function(a, b) {
+    return Math.max(a, b);
+  });
+
+  var subwind = sortedWind.slice(magic - Math.round(magic/(72.0)))
+  var subpeakMPH = subwind.reduce(function(a, b) {
+    return Math.max(a, b);
+  });
+
+  var minMPH = sortedWind.reduce(function(a, b) {
+    if(a < 0)
+    {
+      a = 1000;
+    }
+    if(b <0)
+    {
+      b = 1000;
+    }
+    return Math.min(a, b);
+  });
+
+  var subminMPH = subwind.reduce(function(a, b) {
+    if(a < 0)
+    {
+      a = 1000;
+    }
+    if(b <0)
+    {
+      b = 1000;
+    }
+    return Math.min(a, b);
+  });
+  //console.log(sortedWind)
+
+  var whereMPH = 72*60.0 - sortedWind.indexOf(peakMPH)*(72.0*60)/magic
+  ff.setMinutes(ff.getMinutes() - whereMPH);
+
+  var peakMPHstr;
+
+  if(peakMPH.toFixed(2).toString().length < 5)
+  {
+    peakMPHstr = "&nbsp" + peakMPH.toFixed(2).toString()
+  }
+  else
+  {
+    peakMPHstr = peakMPH.toFixed(2).toString()
+  }
+
+  document.getElementById('max72').innerHTML = "Peak 72 Hours : " + peakMPHstr + " MPH,   " + (ff.getMonth()+1).toString() + "-" + ff.getDate().toString() + " " + ff.getHoursTwoDigits().toString() + ":" + ff.getMinutesTwoDigits().toString();
+
+  var ff = new Date();
+  var whereMPHmin = 72*60.0 - sortedWind.indexOf(minMPH)*(72.0*60)/magic
+  ff.setMinutes(ff.getMinutes() - whereMPHmin);
+
+  var minMPHstr;
+
+  if(minMPH.toFixed(2).toString().length < 5)
+  {
+    minMPHstr = "&nbsp" + minMPH.toFixed(2).toString()
+  }
+  else
+  {
+    minMPHstr = minMPH.toFixed(2).toString()
+  }
+
+  document.getElementById('min72').innerHTML = "Min&nbsp 72 Hours&nbsp: " + minMPHstr + " MPH,   " + (ff.getMonth()+1).toString() + "-" + ff.getDate().toString() + " " + ff.getHoursTwoDigits().toString() + ":" + ff.getMinutesTwoDigits().toString();
+
+  var ff = new Date();
+  var subwhereMPH = 72*60.0 - sortedWind.indexOf(subpeakMPH)*(72.0*60)/magic
+
+  ff.setMinutes(ff.getMinutes() - subwhereMPH);
+
+  var subpeakMPHstr;
+
+  if(subpeakMPH.toFixed(2).toString().length < 5)
+  {
+    subpeakMPHstr = "&nbsp" + subpeakMPH.toFixed(2).toString()
+  }
+  else
+  {
+    subpeakMPHstr = subpeakMPH.toFixed(2).toString()
+  }
+
+  document.getElementById('submax72').innerHTML = "Peak 1 Hours&nbsp&nbsp: " + subpeakMPHstr + " MPH,   " + (ff.getMonth()+1).toString() + "-" + ff.getDate().toString() + " " + ff.getHoursTwoDigits().toString() + ":" + ff.getMinutesTwoDigits().toString();
+
+  var ff = new Date();
+  var whereMPHmin = 72*60.0 - sortedWind.indexOf(subminMPH)*(72.0*60)/magic
+  ff.setMinutes(ff.getMinutes() - whereMPHmin);
+
+  var subminMPHstr;
+
+  if(subminMPH.toFixed(2).toString().length < 5)
+  {
+    subminMPHstr = "&nbsp" + subminMPH.toFixed(2).toString()
+  }
+  else
+  {
+    subminMPHstr = subminMPH.toFixed(2).toString()
+  }
+
+  document.getElementById('submin72').innerHTML = "Min&nbsp 1 Hours&nbsp&nbsp: " + subminMPHstr + " MPH,   " + (ff.getMonth()+1).toString() + "-" + ff.getDate().toString() + " " + ff.getHoursTwoDigits().toString() + ":" + ff.getMinutesTwoDigits().toString();
+}
+
+function getSilderSize()
+{
+    return document.getElementById("zoom").max = (Math.ceil(magic/window.innerWidth));
+}
+
+
+window.onload = function()
+{
+    slider = document.getElementById("zoom");
+    info = document.getElementById("info");
+    c = document.getElementById("graph");
+    ctx = c.getContext("2d");
+    canvas = document.getElementsByTagName("canvas")[0]
+    scrollToElementD()
+    slider.oninput = function()
+    {
+        var new_width = magic/slider.value;
+        if(new_width<window.innerWidth)
+        {
+            new_width = window.innerWidth-20;
+        }
+        canvas.width = new_width;
+        if(wind_temp_sw)
+        {      
+          ctx.clearRect(0,0,canvas.width,canvas.height);
+          drawHT();
+          drawV();
+          drawHistTemp();
+        }
+        else
+        {
+          ctx.clearRect(0,0,canvas.width,canvas.height);
+          drawH();
+          drawV();
+          drawHist();
+        }
+        scrollToElementD()
+    }
+    info.onclick = function () 
+    {
+      document.getElementById("live").innerHTML = "--"
+      if(!wind_temp_sw)
+      {
+        document.getElementById("preambleID").innerHTML = "Temperature is,";
+        document.getElementById("mphID").innerHTML = "&#176" + "F";
+        document.getElementById("info").style.backgroundColor = '#adffcc'
+        clearInterval(intervalWind);
+        intervalTemp = setInterval(loadTemp,1000);        
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        drawHT();
+        drawV();
+        drawHistTemp();
+
+        wind_temp_sw = !wind_temp_sw;
+      }
+      else
+      {
+        document.getElementById("preambleID").innerHTML = "Wind speed is,";
+        document.getElementById("mphID").innerHTML = "MPH";
+        document.getElementById("info").style.backgroundColor = '#d3d3d3'
+        clearInterval(intervalTemp);
+        intervalWind = setInterval(loadWind,1000);
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        drawH();
+        drawV();
+        drawHist();
+        wind_temp_sw = !wind_temp_sw;
+      }
+    }
+}
+
+function interpolateArray(data, fitCount) 
+{
+
+    var linearInterpolate = function (before, after, atPoint) {
+        return before + (after - before) * atPoint;
+    };
+
+    var newData = new Array();
+    var springFactor = new Number((data.length - 1) / (fitCount - 1));
+    newData[0] = data[0]; // for new allocation
+    for ( var i = 1; i < fitCount - 1; i++) {
+        var tmp = i * springFactor;
+        var before = new Number(Math.floor(tmp)).toFixed();
+        var after = new Number(Math.ceil(tmp)).toFixed();
+        var atPoint = tmp - before;
+        newData[i] = linearInterpolate(data[before], data[after], atPoint);
+    }
+    newData[fitCount - 1] = data[data.length - 1]; // for new allocation
+    return newData;
+};
+
+Date.prototype.getHoursTwoDigits = function()
+{
+    var retval = this.getHours();
+    if (retval < 10)
+    {
+        return ("0" + retval.toString());
+    }
+    else
+    {
+        return retval.toString();
+    }
+}
+
+Date.prototype.getMinutesTwoDigits = function()
+{
+    var retval = this.getMinutes();
+    if (retval < 10)
+    {
+        return ("0" + retval.toString());
+    }
+    else
+    {
+        return retval.toString();
+    }
+}
+
+function scrollToElementD()
+{
+    document.getElementById('parent').scrollLeft = 20000;
+    //
+}
+
+function loadHistTemp() 
+{
+    var newer
+    var older
+    var hist_data
+
+    var xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) 
+    {
+        hist_data = JSON.parse(this.responseText);
+        newer = hist_data.temp_history.slice(0,hist_data.currPosition)
+        older = hist_data.temp_history.slice(hist_data.currPosition)
+        sortedTemp = older.concat(newer)
+        sortedTemp = interpolateArray(sortedTemp,magic)
+        unscaledTemp = hist_data.temp_history
+        //sortedWind = interpolateArray(hist_data.wind_history,magic)
+    }
+    };
+    xhttp.open("GET", "http://192.168.1.1/hist_temp", true);
+    xhttp.send();
+}
+
+
+function loadHist() 
+{
+    var newer
+    var older
+    var hist_data
+
+    var xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) 
+    {
+        hist_data = JSON.parse(this.responseText);
+        newer = hist_data.wind_history.slice(0,hist_data.currPosition)
+        older = hist_data.wind_history.slice(hist_data.currPosition)
+        sortedWind = older.concat(newer)
+        sortedWind = interpolateArray(sortedWind,magic)
+        //sortedWind = interpolateArray(hist_data.wind_history,magic)
+
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        drawH();
+        drawV();
+        drawHist();
+    }
+    };
+    xhttp.open("GET", "http://192.168.1.1/hist_wind", true);
+    xhttp.send();
+}
+
+function loadWind() 
+{
+    var xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+          document.getElementById("live").innerHTML = this.responseText;
+        }
+    };
+    xhttp.open("GET", "http://192.168.1.1/wind", true);
+    xhttp.send();
+    getSilderSize();
+    stats();
+}
+
+function loadTemp() 
+{
+    var xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function() {
+        if (this.readyState == 4 && this.status == 200) {
+          document.getElementById("live").innerHTML = this.responseText;
+        }
+    };
+    xhttp.open("GET", "http://192.168.1.1/temp", true);
+    xhttp.send();
+    getSilderSize();
+    stats();
+}
+
+function drawHist() 
+{
+    ctx.beginPath();
+    ctx.strokeStyle="#000000";
+    ctx.setLineDash([2,0]);
+
+    var subSampIdx;
+    var subSampIdxPrev;
+
+    for(var i = 1; i < canvas.width; i++)
+    {
+        subSampIdx = Math.floor(i*(magic/canvas.width))
+        subSampIdxPrev = Math.floor((i-1)*(magic/canvas.width))
+
+        if(sortedWind[subSampIdx] >= 0)
+        {
+            ctx.moveTo(i-1,canvas.height - windScale*sortedWind[subSampIdxPrev]);
+            ctx.lineTo(i,canvas.height - windScale*sortedWind[subSampIdx]);
+            
+        }
+    }
+
+    ctx.stroke();
+    ctx.closePath();
+}
+
+function drawHistTemp() 
+{
+    ctx.beginPath();
+    ctx.strokeStyle="#990000";
+    ctx.setLineDash([2,0]);
+
+    var subSampIdx;
+    var subSampIdxPrev;
+    var minTemp = unscaledTemp.reduce(function(a, b) {
+      if(a < 0)
+      {
+        a = 1000;
+      }
+      if(b <0)
+      {
+        b = 1000;
+      }
+      return Math.min(a, b);
+    });
+
+    var peakTemp= unscaledTemp.reduce(function(a, b) {
+      return Math.max(a, b);
+    });
+
+    var tempDelta = peakTemp - minTemp;
+    if(tempDelta == 0)
+    {
+      tempScale = 375
+    }
+    else
+    {
+      tempScale = (canvas.height - tempPad)/tempDelta;
+    }
+
+    console.log('min',minTemp)
+    console.log('max',peakTemp)
+
+    console.log('delta',tempDelta)
+    console.log("scale",tempScale)
+
+    for(var i = 1; i < canvas.width; i++)
+    {
+        subSampIdx = Math.floor(i*(magic/canvas.width))
+        subSampIdxPrev = Math.floor((i-1)*(magic/canvas.width))
+
+        if(sortedTemp[subSampIdxPrev] >= minTemp && sortedTemp[subSampIdx] >= minTemp)
+        {
+
+            ctx.moveTo(i-1,canvas.height - tempScale*sortedTemp[subSampIdxPrev] + tempScale*minTemp - tempPad/2);
+            ctx.lineTo(i,canvas.height - tempScale*sortedTemp[subSampIdx] + tempScale*minTemp - tempPad/2);
+            
+        }
+    }
+
+    ctx.stroke();
+    ctx.closePath();
+
+    ctx.beginPath();
+
+    var calcTH = Math.floor(minTemp);
+    var windH =[];
+
+    while(calcTH < peakTemp)
+    {
+      windH.push(calcTH)
+      if( Math.ceil(20/tempScale) == 0)
+      {
+
+        calcTH = calcTH + 1
+      }
+      else
+      {
+        calcTH = calcTH + Math.ceil(20/tempScale)
+      }
+    }
+
+    console.log(windH)
+    for(var i = 0; i < windH.length; i++)
+    {
+      var location = (canvas.height - tempScale*windH[i] + tempScale*minTemp - tempPad/2);
+
+      ctx.setLineDash([2,2]);
+      ctx.strokeStyle = "#BBBBBB";
+      ctx.font = "10px Arial";
+      ctx.fillStyle="#AAAAAA";
+      ctx.fillText(windH[i],canvas.width - 20,location-5)
+      ctx.moveTo(0,location);
+      ctx.lineTo(canvas.width,location);
+    }
+
+    ctx.stroke()
+    ctx.fillText("F",canvas.width - mphX+10,mphY+10)
+    ctx.closePath();
+}
+
+
+function drawHT()
+{
+
+}
+
+function drawH()
+{
+  ctx.beginPath();
+
+  var windH = [2,5,8,10,12,14,16,18,20,22,24,26,28,30] //Winds to draw lines for
+  for(var i = 0; i < windH.length; i++)
+  {
+    var location = (canvas.height/windScale - windH[i])*windScale;
+
+    ctx.setLineDash([2,2]);
+    ctx.strokeStyle = "#BBBBBB";
+    ctx.font = "10px Arial";
+    ctx.fillStyle="#AAAAAA";
+    ctx.fillText(windH[i],canvas.width - 20,location-5)
+    ctx.moveTo(0,location);
+    ctx.lineTo(canvas.width,location);
+  }
+
+  ctx.stroke()
+  ctx.fillText("MPH",canvas.width - mphX,mphY+10)
+  ctx.closePath();
+}
+
+function drawV()
+{
+    ctx.beginPath();
+    var freeze = new Date();
+    var good = new Date();
+
+
+
+    var pix_min  = canvas.width/(depthHours*60.0) //  pixel/minute
+    var step = pix_min*15; // step 15min in pixels
+    var flag = "15"
+    
+    while(step < minPixVertBars)
+    {
+      if(step < pix_min*30)
+      {
+        step = step + pix_min*15;
+        flag = "30"
+      }
+      else if(step < pix_min*60)
+      {
+        step = step + pix_min*30;
+        flag = "60"
+      }
+      else
+      {
+        step = step + pix_min*60;
+        flag = "60"
+      }
+    }
+  
+  var locBar = step;
+  var minBack = locBar/pix_min; //give how many minues back i am
+
+  freeze.setMinutes(freeze.getMinutes() - minBack); // What time is that
+
+  var distBack; //minutes to go back to get to a standard minute tick
+
+  if(flag == "15")
+  {
+    if(freeze.getMinutes() < 15)
+    {
+        distBack = freeze.getMinutes() - 0;
+    }
+    else if(freeze.getMinutes() < 30)
+    {
+        distBack = freeze.getMinutes() - 15;
+    }
+    else if(freeze.getMinutes() < 45)
+    {
+        distBack = freeze.getMinutes() - 30;
+    }
+    else
+    {
+        distBack = freeze.getMinutes() - 45;
+    }
+  }
+  else if(flag == "30")
+  {
+    if(freeze.getMinutes() < 30)
+    {
+        distBack = freeze.getMinutes() - 0;
+    }
+    else 
+    {
+        distBack = freeze.getMinutes() - 30;
+    }
+  }
+  else
+  {
+    distBack = freeze.getMinutes() - 0;
+  }
+
+  locBar = pix_min*distBack + locBar;
+
+  for(var p = canvas.width; p > 0; p--)
+  {
+    if(p < canvas.width - locBar )
+    {
+      ctx.font = "10px Arial";
+      ctx.fillStyle="#AAAAAA";
+      var minBack = (Math.round(locBar/pix_min));
+      freeze.setTime(good.getTime());
+      freeze.setMinutes(freeze.getMinutes() - minBack);
+      if(freeze.getMinutes() == 59)
+      {
+        freeze.setMinutes(freeze.getMinutes() + 1);
+      }
+      var minStr = freeze.getMinutesTwoDigits()
+      ctx.fillText((freeze.getMonth()+1).toString() + "-" + freeze.getDate().toString(),p+6,20);
+      ctx.fillText(freeze.getHours().toString() + ":" + minStr,p+6,35);
+      //ctx.fillText(minBack,p+6,35);
+      ctx.fillRect(p,0,2,canvas.height);
+      locBar = locBar + step;
+    }
+  }
+  ctx.fillStyle="#000000";
+  ctx.closePath();
+}
+
+
+loadHist()
+loadHistTemp() 
+var intervalWind = setInterval(loadWind,1000);
+var intervalTemp;
+
+
+</script>
+
+<body>
+<div id="info" class="wind">
+  <div class="preamble" id="preambleID" >Wind speed is,</div>
+  <div class="now" id="live">--</div>
+  <div class="mph" id="mphID" >MPH</div>
+</div>
+<div class="slidecontainer">
+</div>
+<div id="parent">
+<canvas id="graph" width="15000" height="375" style="border:1px solid #000000;"></canvas>
+</div>
+<input class="slider" id="zoom" type="range" min="1" max="20" value="0">
+<div class="statistics">
+  <div class="statN"> Stats </div>
+  <div class="statP" id="max72"> 0 </div>
+  <div class="statP" id="min72"> 0 </div>
+  <div class="statP" id="submax72"> 0 </div>
+  <div class="statP" id="submin72"> 0 </div>
+</div>
+</body>
+<style>
+.slidecontainer {
+    width: 100%;
+}
+
+.now {
+    font-size: 400%;
+    font-family: sans-serif;
+    text-align : center;
+    font-weight: bold;
+}
+
+.statN {
+    font-size: 200%;
+    font-family: sans-serif;
+    text-align : center;
+    font-weight: bold;
+}
+
+.statP {
+    font-size: 100%;
+    font-family: monospace;
+    text-align : left;
+    font-weight: bold;
+    padding-left: 5%;
+}
+
+.mph {
+    font-size: 100%;
+    font-family: sans-serif;
+    text-align : center;
+    padding-left: 200px;
+}
+
+.preamble {
+    font-size: 100%;
+    font-family: sans-serif;
+    text-align : center;
+    padding-right: 200px;
+}
+
+#info {
+    width: 100%;
+    border:0px;
+    background: #d3d3d3;
+    padding-top: 20px;
+    padding-right: 0px;
+    padding-bottom: 20px;
+    padding-left: 0px;
+    margin-top: 0px; 
+    margin-bottom: 0px; 
+    margin-left: 0px; 
+    margin-right: 0px;
+    
+    border-radius: 25px;
+
+}
+
+.statistics {
+    width: 100%;
+    border:0px;
+    background: #d3d3d3;
+    padding-top: 5px;
+    padding-right: 0px;
+    padding-bottom: 20px;
+    padding-left: 0px;
+    margin-top: 5px; 
+    margin-bottom: 0px; 
+    margin-left: 0px; 
+    margin-right: 0px;
+    
+    border-radius: 25px;
+
+}
+
+
+.slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 25px;
+    background: #d3d3d3;
+    outline: none;
+    opacity: 0.7;
+    -webkit-transition: .2s;
+    transition: opacity .2s;
+}
+
+.slider:hover {
+    opacity: 1;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 25px;
+    height: 25px;
+    background: #4CAF50;
+    cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+    width: 25px;
+    height: 25px;
+    background: #4CAF50;
+    cursor: pointer;
+}
+
+#parent {
+	width:100%;
+	height:400px;
+	border:0px solid #d3d3d3;
+	overflow:auto;
+  margin-bottom: 2px; 
+  margin-top: 10px; 
+}
+.graph {
+	width:auto;
+	height:100%;
+}
+.top {
+	
+}
+</style>
+</html>
